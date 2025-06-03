@@ -1,66 +1,64 @@
+
+-- Auto Gạt Cần Blox Fruits Full Logic + UI Progress
+
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
 local Workspace = game:GetService("Workspace")
+
 local LocalPlayer = Players.LocalPlayer
 
+-- UI INIT
 local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-local MainFrame = Instance.new("Frame", ScreenGui)
-MainFrame.Size = UDim2.new(0, 270, 0, 180)
-MainFrame.Position = UDim2.new(0, 20, 0, 100)
-MainFrame.BackgroundTransparency = 0.2
-MainFrame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-MainFrame.BorderSizePixel = 0
-local UICorner = Instance.new("UICorner", MainFrame)
-UICorner.CornerRadius = UDim.new(0, 10)
-local UIListLayout = Instance.new("UIListLayout", MainFrame)
-UIListLayout.Padding = UDim.new(0, 4)
+ScreenGui.Name = "GatCanProgress"
 
-local function createStatusLine(text, status)
-    local line = Instance.new("TextLabel")
-    line.Size = UDim2.new(1, -10, 0, 25)
-    line.BackgroundTransparency = 1
-    line.TextXAlignment = Enum.TextXAlignment.Left
-    line.Font = Enum.Font.SourceSansSemibold
-    line.TextSize = 18
-    line.TextColor3 = Color3.new(1, 1, 1)
-    line.Text = (status and "✅ " or "❌ ") .. text
-    return line
-end
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Position = UDim2.new(0, 10, 0.5, -100)
+Frame.Size = UDim2.new(0, 300, 0, 200)
+Frame.BackgroundTransparency = 0.3
+Frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+Frame.BorderSizePixel = 0
 
-local Tasks = {
+local taskStatus = {
     ["Killed Rip_Indra"] = false,
     ["Killed Dough King V2"] = false,
     ["Talked to Tablet"] = false,
     ["Teleported to Mysterious Island"] = false,
-    ["Activated Race V3 at Moonrise"] = false,
+    ["Activated Race V3 at Moonrise"] = false
 }
-local Labels = {}
-for task, done in pairs(Tasks) do
-    local label = createStatusLine(task, done)
-    label.Parent = MainFrame
-    Labels[task] = label
-end
-local function updateTask(taskName)
-    Tasks[taskName] = true
-    if Labels[taskName] then
-        Labels[taskName].Text = "✅ " .. taskName
+
+local labelRefs = {}
+
+local function updateTask(name)
+    taskStatus[name] = true
+    if labelRefs[name] then
+        labelRefs[name].Text = "✅ " .. name
+        labelRefs[name].TextColor3 = Color3.fromRGB(0, 255, 0)
     end
 end
 
-local function findBoss(name)
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Model") and v.Name == name then
-            return v
-        end
+local function createTaskLabels()
+    local y = 10
+    for taskName, _ in pairs(taskStatus) do
+        local Label = Instance.new("TextLabel", Frame)
+        Label.Text = "❌ " .. taskName
+        Label.Position = UDim2.new(0, 10, 0, y)
+        Label.Size = UDim2.new(1, -20, 0, 20)
+        Label.TextColor3 = Color3.fromRGB(255, 0, 0)
+        Label.BackgroundTransparency = 1
+        Label.TextXAlignment = Enum.TextXAlignment.Left
+        labelRefs[taskName] = Label
+        y = y + 25
     end
-    return nil
 end
 
+createTaskLabels()
+
+-- LOGIC
 local function hopServer()
-    local Servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/2753915549/servers/Public?sortOrder=2&limit=100"))
-    for _, v in pairs(Servers.data) do
+    local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/2753915549/servers/Public?sortOrder=2&limit=100"))
+    for _, v in pairs(servers.data) do
         if v.playing < v.maxPlayers then
             TeleportService:TeleportToPlaceInstance(game.PlaceId, v.id, LocalPlayer)
             break
@@ -68,39 +66,56 @@ local function hopServer()
     end
 end
 
-local function killBoss(bossName, taskKey)
-    local tries = 0
-    while tries < 5 do
-        local boss = findBoss(bossName)
-        if boss then
-            repeat
-                task.wait(1)
-                boss:Destroy()
-            until not boss.Parent
-            updateTask(taskKey)
-            return
-        else
-            hopServer()
-            task.wait(5)
+local function waitForBoss(name)
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("Model") and v.Name:lower():find(name:lower()) then
+            return v
         end
-        tries += 1
     end
 end
 
+local function attackBoss(boss)
+    while boss and boss.Parent do
+        LocalPlayer.Character:PivotTo(boss:GetPivot())
+        task.wait(0.5)
+    end
+end
+
+local function killBoss(name, taskKey)
+    if taskStatus[taskKey] then return end
+    local found = waitForBoss(name)
+    if not found then hopServer() return end
+    attackBoss(found)
+    updateTask(taskKey)
+end
+
 local function talkToStone()
-    task.wait(2)
-    updateTask("Talked to Tablet")
+    if taskStatus["Talked to Tablet"] then return end
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("Model") and v.Name == "Tablet" then
+            fireclickdetector(v:FindFirstChildWhichIsA("ClickDetector"))
+            updateTask("Talked to Tablet")
+            break
+        end
+    end
 end
 
 local function gotoMysteriousIsland()
-    task.wait(2)
-    updateTask("Teleported to Mysterious Island")
+    if taskStatus["Teleported to Mysterious Island"] then return end
+    for _, v in pairs(game:GetService("Workspace"):GetDescendants()) do
+        if v:IsA("RemoteEvent") and v.Name == "MysteriousIslandTeleport" then
+            v:FireServer()
+            updateTask("Teleported to Mysterious Island")
+            break
+        end
+    end
 end
 
 local function waitMoonAndAwaken()
+    if taskStatus["Activated Race V3 at Moonrise"] then return end
     task.spawn(function()
         while true do
-            task.wait(3)
+            task.wait(2)
             local hour = game.Lighting:GetMinutesAfterMidnight() / 60
             if hour >= 18.5 and hour <= 19.5 then
                 updateTask("Activated Race V3 at Moonrise")
@@ -110,6 +125,7 @@ local function waitMoonAndAwaken()
     end)
 end
 
+-- MAIN THREAD
 task.spawn(function()
     killBoss("rip_indra", "Killed Rip_Indra")
     killBoss("Dough King", "Killed Dough King V2")
