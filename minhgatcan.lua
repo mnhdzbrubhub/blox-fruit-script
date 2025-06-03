@@ -1,26 +1,5 @@
-
--- Auto Gạt Cần Blox Fruits Full Logic + UI Progress
-
-local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TeleportService = game:GetService("TeleportService")
-local Workspace = game:GetService("Workspace")
-
-local LocalPlayer = Players.LocalPlayer
-
--- UI INIT
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-ScreenGui.Name = "GatCanProgress"
-
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Position = UDim2.new(0, 10, 0.5, -100)
-Frame.Size = UDim2.new(0, 300, 0, 200)
-Frame.BackgroundTransparency = 0.3
-Frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-Frame.BorderSizePixel = 0
-
-local taskStatus = {
+--// Variables
+local taskState = {
     ["Killed Rip_Indra"] = false,
     ["Killed Dough King V2"] = false,
     ["Talked to Tablet"] = false,
@@ -28,104 +7,117 @@ local taskStatus = {
     ["Activated Race V3 at Moonrise"] = false
 }
 
-local labelRefs = {}
+--// UI
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 400, 0, 200)
+Frame.Position = UDim2.new(0, 20, 0.4, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Frame.BorderSizePixel = 0
 
-local function updateTask(name)
-    taskStatus[name] = true
-    if labelRefs[name] then
-        labelRefs[name].Text = "✅ " .. name
-        labelRefs[name].TextColor3 = Color3.fromRGB(0, 255, 0)
+local UIListLayout = Instance.new("UIListLayout", Frame)
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 5)
+
+local taskLabels = {}
+
+local function createTaskLabel(taskName)
+    local label = Instance.new("TextLabel", Frame)
+    label.Size = UDim2.new(1, -10, 0, 25)
+    label.BackgroundTransparency = 1
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Font = Enum.Font.SourceSansBold
+    label.TextSize = 18
+    taskLabels[taskName] = label
+end
+
+local function updateTask(taskName)
+    taskState[taskName] = true
+    if taskLabels[taskName] then
+        taskLabels[taskName].Text = "✅ " .. taskName
+        taskLabels[taskName].TextColor3 = Color3.fromRGB(0, 255, 0)
     end
 end
 
-local function createTaskLabels()
-    local y = 10
-    for taskName, _ in pairs(taskStatus) do
-        local Label = Instance.new("TextLabel", Frame)
-        Label.Text = "❌ " .. taskName
-        Label.Position = UDim2.new(0, 10, 0, y)
-        Label.Size = UDim2.new(1, -20, 0, 20)
-        Label.TextColor3 = Color3.fromRGB(255, 0, 0)
-        Label.BackgroundTransparency = 1
-        Label.TextXAlignment = Enum.TextXAlignment.Left
-        labelRefs[taskName] = Label
-        y = y + 25
-    end
+local function isTaskDone(taskName)
+    return taskState[taskName]
 end
 
-createTaskLabels()
-
--- LOGIC
-local function hopServer()
-    local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/2753915549/servers/Public?sortOrder=2&limit=100"))
-    for _, v in pairs(servers.data) do
-        if v.playing < v.maxPlayers then
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, v.id, LocalPlayer)
-            break
-        end
-    end
+for taskName in pairs(taskState) do
+    createTaskLabel(taskName)
+    updateTask(taskName) -- update lại lần đầu để hiển thị đúng màu
 end
 
-local function waitForBoss(name)
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Model") and v.Name:lower():find(name:lower()) then
+--// Helpers
+function findBoss(name)
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v:FindFirstChild("HumanoidRootPart") and string.lower(v.Name):find(name:lower()) then
             return v
         end
     end
 end
 
-local function attackBoss(boss)
-    while boss and boss.Parent do
-        LocalPlayer.Character:PivotTo(boss:GetPivot())
-        task.wait(0.5)
-    end
-end
-
-local function killBoss(name, taskKey)
-    if taskStatus[taskKey] then return end
-    local found = waitForBoss(name)
-    if not found then hopServer() return end
-    attackBoss(found)
-    updateTask(taskKey)
-end
-
-local function talkToStone()
-    if taskStatus["Talked to Tablet"] then return end
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("Model") and v.Name == "Tablet" then
-            fireclickdetector(v:FindFirstChildWhichIsA("ClickDetector"))
-            updateTask("Talked to Tablet")
+function hopToRandomServer()
+    local HttpService = game:GetService("HttpService")
+    local servers = HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/2753915549/servers/Public?sortOrder=Asc&limit=100"))
+    for _, server in pairs(servers.data) do
+        if server.playing < server.maxPlayers then
+            game:GetService("TeleportService"):TeleportToPlaceInstance(game.PlaceId, server.id)
             break
         end
     end
 end
 
-local function gotoMysteriousIsland()
-    if taskStatus["Teleported to Mysterious Island"] then return end
-    for _, v in pairs(game:GetService("Workspace"):GetDescendants()) do
-        if v:IsA("RemoteEvent") and v.Name == "MysteriousIslandTeleport" then
-            v:FireServer()
-            updateTask("Teleported to Mysterious Island")
-            break
+function killBoss(bossName, taskKey)
+    while not isTaskDone(taskKey) do
+        local boss = findBoss(bossName)
+        if not boss then
+            hopToRandomServer()
+            return
+        end
+        pcall(function()
+            game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = boss.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0)
+        end)
+        wait(1)
+        if boss:FindFirstChild("Humanoid") and boss.Humanoid.Health <= 0 then
+            updateTask(taskKey)
+        end
+        wait(2)
+    end
+end
+
+function talkToStone()
+    if isTaskDone("Talked to Tablet") then return end
+    local stone = workspace:FindFirstChild("Tablet")
+    if stone and stone:FindFirstChild("TalkPrompt") then
+        fireproximityprompt(stone.TalkPrompt)
+        wait(1)
+        updateTask("Talked to Tablet")
+    end
+end
+
+function gotoMysteriousIsland()
+    if isTaskDone("Teleported to Mysterious Island") then return end
+    local teleport = workspace:FindFirstChild("MysteriousIslandTeleport")
+    if teleport and teleport:FindFirstChild("ProximityPrompt") then
+        fireproximityprompt(teleport.ProximityPrompt)
+        wait(1)
+        updateTask("Teleported to Mysterious Island")
+    end
+end
+
+function waitMoonAndAwaken()
+    while not isTaskDone("Activated Race V3 at Moonrise") do
+        wait(3)
+        local hour = game.Lighting:GetMinutesAfterMidnight() / 60
+        if hour >= 18.5 and hour <= 19.5 then
+            updateTask("Activated Race V3 at Moonrise")
         end
     end
 end
 
-local function waitMoonAndAwaken()
-    if taskStatus["Activated Race V3 at Moonrise"] then return end
-    task.spawn(function()
-        while true do
-            task.wait(2)
-            local hour = game.Lighting:GetMinutesAfterMidnight() / 60
-            if hour >= 18.5 and hour <= 19.5 then
-                updateTask("Activated Race V3 at Moonrise")
-                break
-            end
-        end
-    end)
-end
-
--- MAIN THREAD
+--// Main
 task.spawn(function()
     killBoss("rip_indra", "Killed Rip_Indra")
     killBoss("Dough King", "Killed Dough King V2")
